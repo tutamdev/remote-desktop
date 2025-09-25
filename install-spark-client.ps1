@@ -19,6 +19,14 @@ $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 Write-Host ">>> Installing Spark Client for user: $CurrentUser"
 
+# 0. Ensure running as Administrator
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host ">>> Script is not running as Administrator. Requesting elevation..."
+    Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    exit
+}
+
 # 1. Create destination folder
 if (!(Test-Path -Path $DestDir)) {
     Write-Host ">>> Creating folder: $DestDir"

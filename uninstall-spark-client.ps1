@@ -10,6 +10,14 @@ $TaskName = "SparkClient"
 
 Write-Host ">>> Uninstalling Spark Client..."
 
+# 0. Ensure running as Administrator
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host ">>> Script is not running as Administrator. Requesting elevation..."
+    Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    exit
+}
+
 # 1. Stop running client.exe
 Write-Host ">>> Stopping client process (if any)..."
 try {
