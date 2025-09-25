@@ -77,3 +77,7 @@ $Principal = New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interact
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal
 
 Write-Host ">>> Done. Spark Client will auto-start hidden (via VBS) when $CurrentUser logs in."
+
+# 8. Start task immediately (so client runs without reboot)
+Write-Host ">>> Starting Spark Client now..."
+Start-ScheduledTask -TaskName $TaskName
